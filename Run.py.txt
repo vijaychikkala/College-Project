@@ -1,0 +1,297 @@
+from flask import  Flask, render_template, url_for, request, session, redirect
+import cv
+import cv2
+import os
+import logging as log
+import datetime as dt
+import numpy as np
+from PIL import Image
+from time import sleep
+import sqlite3 as sql
+import mysql.connector
+from mysql.connector import MySQLConnection, Error
+
+ 
+
+from flask_mysqldb import MySQL
+app = Flask(__name__)
+p=[0]
+q=[0]
+data=0
+#app.config['MYSQL_HOST'] = 'localhost'
+#app.config['MYSQL_USER'] = 'root'
+#app.config['MYSQL_PASSWORD'] = ''
+#app.config['MYSQL_DB'] = 'crowd'
+
+#mysql = MySQL(app)
+
+
+user_id = ""
+mydb = mysql.connector.connect(
+  host="localhost",
+ user="root",
+ passwd="",
+ database="crowd"
+)
+
+mycursor = mydb.cursor()
+
+@app.route("/")
+def home():
+    return render_template("home.html")
+
+@app.route("/", methods=['POST'])
+def homes():
+    name = request.form['name']
+    email = request.form['email']
+    subject = request.form['subject']
+    comment = request.form['comment']
+    query = ("INSERT INTO feedback SET name=%s , email=%s, subject=%s, comment=%s ")
+    values = (name,email,subject,comment)
+    mycursor.execute(query,values)
+    mydb.commit()
+    return render_template("layout.html", data1="Successfully Sent, Thanks for showing your Interest.")
+
+     
+  
+@app.route("/login/")
+def login1():      
+    return render_template("login.html")
+
+@app.route('/adminlogin/')
+def adminlogin():
+    return render_template("adminlogin.html", data1="")
+
+@app.route("/adminlogin/", methods=['POST'])
+def adminlogin1():
+    username = request.form['username']
+    password = request.form['password']
+    query = ("SELECT * FROM adminlogin WHERE username=%s and password=%s")
+    values = (username,password)
+    mycursor.execute(query,values)
+    data = mycursor.fetchall()
+    count = mycursor.rowcount
+    if count==1:
+        id =  data[0][0]
+        global user_id
+        user_id = id
+        p[0]=1
+        return redirect(url_for('admindashboard'))
+    else:
+        return render_template("adminlogin.html", data1="Please Enter Valid Credentials")
+
+@app.route('/login/', methods=['POST','GET'])
+def login():
+    username = request.form['username']
+    password = request.form['password']
+    query = ("SELECT * FROM login WHERE username=%s and password=%s")
+    values = (username,password)
+    mycursor.execute(query,values)
+    data = mycursor.fetchall()
+    count = mycursor.rowcount
+    
+    if count==1:
+        id =  data[0][0]
+        global user_id
+        user_id = id
+        q[0]=1
+        return redirect(url_for('userdashboard'))
+    else:
+        return render_template("login.html", data1="Please enter valid details")
+    while True:
+        global datau
+        datau=username
+        print(datau)
+
+
+@app.route("/vigilance")
+def capture():
+    if user_id:
+        return render_template("capture.html")
+    else:
+        return redirect(url_for('login1'))
+   
+@app.route("/vigilances")
+def captures():
+    cascPath = "haarcascade_frontalface_default.xml"
+    faceCascade = cv2.CascadeClassifier(cascPath)
+    log.basicConfig(filename='webcamdata.txt',level=log.INFO)
+
+    video_capture = cv2.VideoCapture(0)
+    count = 0
+
+    while True:
+        if not video_capture.isOpened():
+            print('Unable to load camera.')
+            sleep(5)
+            pass
+
+        # Capture frame-by-frame
+        ret, frame = video_capture.read()
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        faces = faceCascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(30, 30)
+        )
+
+        # Draw a rectangle around the faces
+        for (x, y, w, h) in faces:
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+        if count != len(faces):
+            count = len(faces)
+            log.info("faces: "+str(len(faces))+" at "+str(dt.datetime.now()))
+            if len(faces)>=0:
+                    global data
+                    data=str(len(faces))
+                    print(data)
+         
+        # Display the resulting frame
+        cv2.imshow('Video', frame)
+        
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break;
+
+        # Display the resulting frame
+        cv2.imshow('Video', frame)
+
+    # When everything is done, release the capture
+    video_capture.release()
+    cv2.destroyAllWindows()
+    return render_template('thankyou.html')
+
+@app.route('/registration/', methods=['POST'])
+def register():
+    name = request.form['name']
+    email = request.form['email']
+    contact_no = request.form['contact']
+    username = request.form['username']
+    password = request.form['password']
+    confirm = request.form['confirm']
+    if password==confirm:
+        query = ("INSERT INTO login SET name=%s,email=%s,contact_no=%s, username=%s , password=%s ")
+        values = (name,email,contact_no,username,password)
+        mycursor.execute(query,values)
+        mydb.commit()
+        return render_template("registration.html", data1="Successfully added")
+    else:
+        return render_template("registration.html", data1="Password Mismatch")
+
+@app.route('/registration')
+def registration():
+    return render_template('registration.html')
+
+
+@app.route("/admindashboard/",methods=['GET','POST'])
+def admindashboard():
+    if p[0]:
+        if request.method=="POST":
+            p[0]=0
+            return render_template('adminlogin.html')
+        return render_template("admindashboard.html", data=data)
+    else:
+        return render_template('adminlogin.html')
+
+
+@app.route('/feedback', methods=['GET', 'POST'])
+def feedbacks():
+    query = ("SELECT * FROM feedback")
+    mycursor.execute(query)
+    data = mycursor.fetchall()
+    return render_template('feedback.html', data=data)
+
+@app.route('/feedback', methods=['POST'])
+def feeddelete():
+    print("hai")
+    return render_template('adminlogin.html')
+    # query = ("SELECT * FROM feedback")
+    # mycursor.execute(query)
+    # data = mycursor.fetchall()
+    # return render_template('feedback.html', data=data)
+
+
+
+@app.route('/users', methods=['GET', 'POST'])
+def user():
+    query = ("SELECT * FROM login")
+    mycursor.execute(query)
+    data = mycursor.fetchall()
+    return render_template('users.html', data=data)
+
+    
+@app.route('/passwordchange')
+def passwordchanges():
+    return render_template('passwordchange.html', data=data)
+
+@app.route('/passwordchange/', methods=['POST'])
+def password():
+    password = request.form['password']
+    confirm = request.form['confirm']
+    if password==confirm:
+        sql = ("UPDATE adminlogin SET password = %s WHERE username = %s")
+        val = (password, "admin")
+        mycursor.execute(sql, val)
+        mydb.commit()
+        return render_template("passwordchange.html", data1="Successfully Updated your Current Password !!")
+    else:
+        return render_template("passwordchange.html", data1="Password Mismatched, Try Again !!!")
+
+
+@app.route('/about')
+def about():
+	return render_template('about.html')
+
+@app.route('/camera',methods=['GET','POST'])
+def camera():
+    return render_template("camera.html", data=data)
+    
+	
+@app.route('/userdashboard',methods=['GET','POST'])
+def userdashboard():
+    if q[0]:
+        if request.method=="POST":
+            q[0]=0
+            return render_template('login.html')
+        return render_template("userdashboard.html", data=data)
+    else:
+        return render_template('login.html')
+ 
+
+@app.route('/usertoadmin')
+def usertoadmins():
+    return render_template('usertoadmin.html')
+
+@app.route('/usertoadmin', methods=['POST'])
+def usertoadmin():
+    name = datau
+    email = request.form['email']
+    subject = request.form['subject']
+    message = request.form['message']
+    query = ("INSERT INTO authfeedback SET name=%s, email=%s, subject=%s , message=%s ")
+    values = (name,email,subject,message)
+    mycursor.execute(query,values)
+    mydb.commit()
+    return render_template("usertoadmin.html", data1="Successfully Sent to Admin.")
+
+
+@app.route('/AuthFeedback', methods=['GET', 'POST'])
+def authfeedback():
+    query = ("SELECT * FROM authfeedback")
+    mycursor.execute(query)
+    data = mycursor.fetchall()
+    return render_template('AuthFeedback.html', data=data)
+    
+@app.route('/thanq')
+def thanq():
+	return render_template('thanq.html')
+
+
+if __name__ == '__main__':
+    app.run(debug=TArue)
+
+
